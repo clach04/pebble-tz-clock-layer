@@ -40,6 +40,20 @@ static void window_unload(Window *window) {
 
 ````
 
+````javascript
+// Add to your app.js
+var TzClock = require('tz-clock-layer');
+var tzClock = new TzClock();
+
+Pebble.addEventListener('ready', function(e) {
+  Pebble.sendAppMessage({'APP_READY': true});
+});
+
+Pebble.addEventListener('appmessage', function(e) {
+  tzClock.appMessageHandler(e);
+});
+````
+
 ## Additional Functions
 
 Fairly standard text layer styling stuff.
