@@ -1,7 +1,8 @@
 # tz-clock-layer
 
-Pebble library for easily adding a clock with a secondary timezone to your app.
-Supports multiple instances.
+Pebble library for easily adding a clock with a secondary timezone (including automatic daylight savings) to your app.
+
+Warning: Currently only supports a single instance.
 
 Get your API key from [Timezone DB](https://timezonedb.com).
 
@@ -15,7 +16,7 @@ You can find a list of timezones here: [Timezone list](https://timezonedb.com/ti
 
 ````c
 // This is a simple example, demonstrating the basic usage.
-#include "tz-clock-layer/tz-clock-layer.h"
+#include <tz-clock-layer/tz-clock-layer.h>
 
 static TzClockLayer *s_remote_time_layer;
 

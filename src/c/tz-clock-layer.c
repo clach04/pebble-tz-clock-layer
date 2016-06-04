@@ -10,27 +10,8 @@ typedef struct TzClockSettings {
   bool app_ready;
 } TzClockSettings;
 
-void tz_clock_tick_event(TzClockLayer *tz_clock_layer, struct tm *local_tick_time, TimeUnits units_changed) {
-  TzClockSettings *data = layer_get_data(tz_clock_layer);
 
-  if (units_changed & DAY_UNIT) {
-    // TODO: Refresh timezone data
-  }
-
-  if (units_changed & MINUTE_UNIT) {
-    time_t now_seconds = mktime(local_tick_time);
-    now_seconds += data->offset_seconds;
-    struct tm *remote_tick_time = gmtime(&now_seconds);
-    strftime(data->time_buffer, sizeof(data->time_buffer), clock_is_24h_style() ? "%H:%M" : "%I:%M", remote_tick_time);
-    text_layer_set_text(data->text_layer, data->time_buffer);
-  }
-}
-
-static void tz_clock_force_tick(TzClockLayer *tz_clock_layer) {
-	time_t now = time(NULL);
-	struct tm *tick_time = localtime(&now);
-	tz_clock_tick_event(tz_clock_layer, tick_time, DAY_UNIT|MINUTE_UNIT);
-}
+static void tz_clock_force_tick(TzClockLayer *tz_clock_layer);
 
 static void tz_clock_msg_failure() {
   APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to send request!");
@@ -40,7 +21,6 @@ static void tz_clock_fetch(TzClockLayer *tz_clock_layer) {
   TzClockSettings *data = layer_get_data(tz_clock_layer);
 
   if(!data->app_ready) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Not ready! %s", data->timezone);
     return;
   }
 
@@ -66,7 +46,7 @@ static void tz_clock_inbox_received_handler(DictionaryIterator *iter, void *cont
   Tuple *ready_tuple = dict_find(iter, MESSAGE_KEY_APP_READY);
   if(ready_tuple) {
     data->app_ready = true;
-    tz_clock_fetch(tz_clock_layer);
+    tz_clock_force_tick(tz_clock_layer);
   }
 
   Tuple *offset_tuple = dict_find(iter, MESSAGE_KEY_OFFSET);
@@ -76,9 +56,32 @@ static void tz_clock_inbox_received_handler(DictionaryIterator *iter, void *cont
   }
 }
 
+void tz_clock_tick_event(TzClockLayer *tz_clock_layer, struct tm *local_tick_time, TimeUnits units_changed) {
+  TzClockSettings *data = layer_get_data(tz_clock_layer);
+  if (units_changed & DAY_UNIT) {
+    tz_clock_fetch(tz_clock_layer);
+  }
+  if(data->offset_seconds == -1) {
+    return;
+  }
+  if (units_changed & MINUTE_UNIT) {
+    time_t now_seconds = mktime(local_tick_time);
+    now_seconds += data->offset_seconds;
+    struct tm *remote_tick_time = gmtime(&now_seconds);
+    strftime(data->time_buffer, sizeof(data->time_buffer), clock_is_24h_style() ? "%H:%M" : "%I:%M", remote_tick_time);
+    text_layer_set_text(data->text_layer, data->time_buffer);
+  }
+}
+
+static void tz_clock_force_tick(TzClockLayer *tz_clock_layer) {
+	time_t now = time(NULL);
+	struct tm *tick_time = localtime(&now);
+	tz_clock_tick_event(tz_clock_layer, tick_time, DAY_UNIT|MINUTE_UNIT);
+}
+
 // Create a set of default settings.
 static void tz_clock_set_defaults(TzClockSettings *data) {
-  data->offset_seconds = 0;
+  data->offset_seconds = -1;
   data->app_ready = false;
 }
 
