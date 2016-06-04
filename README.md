@@ -3,6 +3,10 @@
 Pebble library for easily adding a clock with a secondary timezone to your app.
 Supports multiple instances.
 
+Get your API key from [Timezone DB](https://timezonedb.com).
+
+You can find a list of timezones here: [Timezone list](https://timezonedb.com/time-zones).
+
 ![Screenshot of library in action](info/image.png)
 
 ## Usage
@@ -23,7 +27,7 @@ static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
-  s_remote_time_layer = tz_clock_layer_create(GRect(0, 68, bounds.size.w, 34), "XXXXXX", "America/Los_Angeles");
+  s_remote_time_layer = tz_clock_layer_create(GRect(0, 68, bounds.size.w, 34), "YOUR-API-KEY", "America/Los_Angeles");
   layer_add_child(window_layer, s_remote_time_layer);
 
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
