@@ -1,7 +1,9 @@
 #include <pebble.h>
-#include "tz-clock-layer.h"
+#include <pebble-tz-clock-layer.h>
+#include <pebble-events/pebble-events.h>
 
 typedef struct TzClockSettings {
+  int session_id;
   char api_key[30];
   char timezone[30];
   int32_t offset_seconds;
@@ -10,6 +12,7 @@ typedef struct TzClockSettings {
   bool app_ready;
 } TzClockSettings;
 
+static bool s_app_ready = false;
 
 static void tz_clock_force_tick(TzClockLayer *tz_clock_layer);
 
@@ -20,21 +23,26 @@ static void tz_clock_msg_failure() {
 static void tz_clock_fetch(TzClockLayer *tz_clock_layer) {
   TzClockSettings *data = layer_get_data(tz_clock_layer);
 
-  if(!data->app_ready) {
+  //if(!data->app_ready) {
+  if(!s_app_ready) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "NOT READY: %d", data->session_id);
     return;
   }
 
   DictionaryIterator *out;
   AppMessageResult result = app_message_outbox_begin(&out);
   if(result != APP_MSG_OK) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "FAILED BEGIN: %d", data->session_id);
     tz_clock_msg_failure();
   }
 
+  dict_write_int(out, MESSAGE_KEY_SESSION_ID, &data->session_id, sizeof(int), true);
   dict_write_cstring(out, MESSAGE_KEY_API_KEY, data->api_key);
   dict_write_cstring(out, MESSAGE_KEY_TIMEZONE, data->timezone);
 
   result = app_message_outbox_send();
   if(result != APP_MSG_OK) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "FAILED SEND: %d", data->session_id);
     tz_clock_msg_failure();
   }
 }
@@ -43,17 +51,27 @@ static void tz_clock_inbox_received_handler(DictionaryIterator *iter, void *cont
   TzClockLayer *tz_clock_layer = (TzClockLayer*) context;
   TzClockSettings *data = layer_get_data(tz_clock_layer);
 
+  // Cannot check session matches
   Tuple *ready_tuple = dict_find(iter, MESSAGE_KEY_APP_READY);
   if(ready_tuple) {
     data->app_ready = true;
+    s_app_ready = true;
     tz_clock_force_tick(tz_clock_layer);
   }
 
-  Tuple *offset_tuple = dict_find(iter, MESSAGE_KEY_OFFSET);
-  if(offset_tuple) {
-    data->offset_seconds = offset_tuple->value->int32;
-    tz_clock_force_tick(tz_clock_layer);
+
+  Tuple *session_id_tuple = dict_find(iter, MESSAGE_KEY_SESSION_ID);
+  if(session_id_tuple && session_id_tuple->value->int32 == data->session_id) {
+
+    Tuple *offset_tuple = dict_find(iter, MESSAGE_KEY_OFFSET);
+    if(offset_tuple) {
+      data->offset_seconds = offset_tuple->value->int32;
+      tz_clock_force_tick(tz_clock_layer);
+    }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "match session: %d, offset: %d", (int)data->session_id, (int)offset_tuple->value->int32);
   }
+
+
 }
 
 void tz_clock_tick_event(TzClockLayer *tz_clock_layer, struct tm *local_tick_time, TimeUnits units_changed) {
@@ -80,9 +98,11 @@ static void tz_clock_force_tick(TzClockLayer *tz_clock_layer) {
 }
 
 // Create a set of default settings.
-static void tz_clock_set_defaults(TzClockSettings *data) {
+static void tz_clock_set_defaults(TzClockLayer *tz_clock_layer, TzClockSettings *data) {
   data->offset_seconds = -1;
   data->app_ready = false;
+  data->session_id = (int)tz_clock_layer;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "pointer: %d", data->session_id);
 }
 
 TzClockLayer* tz_clock_layer_create(GRect frame, char api_key[30], char timezone[30]) {
@@ -90,16 +110,17 @@ TzClockLayer* tz_clock_layer_create(GRect frame, char api_key[30], char timezone
   tz_clock_layer = layer_create_with_data(frame, sizeof(TzClockSettings));
 
   TzClockSettings *data = layer_get_data(tz_clock_layer);
-  tz_clock_set_defaults(data);
+  tz_clock_set_defaults(tz_clock_layer, data);
   memcpy(data->api_key, api_key, sizeof(data->api_key));
   memcpy(data->timezone, timezone, sizeof(data->timezone));
 
   data->text_layer = text_layer_create(GRect(0, 0, frame.size.w, frame.size.h));
   layer_add_child(tz_clock_layer, text_layer_get_layer(data->text_layer));
 
-  app_message_register_inbox_received(tz_clock_inbox_received_handler);
-  app_message_set_context(tz_clock_layer);
-  app_message_open(256, 256);
+  events_app_message_register_inbox_received(tz_clock_inbox_received_handler, tz_clock_layer);
+  events_app_message_request_inbox_size(256);
+  events_app_message_request_outbox_size(256);
+  events_app_message_open();
 
   return tz_clock_layer;
 }
